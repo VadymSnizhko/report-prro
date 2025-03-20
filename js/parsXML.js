@@ -1,21 +1,45 @@
-fetch('/XML/sheet1.xml') // або підстав URL файлу
-  .then(response => response.text())
-  .then(xmlText => {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlText, 'application/xml');
+document
+  .getElementById('fileInput')
+  .addEventListener('change', async function (event) {
+    const file = event.target.files[0];
+    if (!file) return;
 
-    // Отримуємо всі рядки з таблиці
-    const rows = xmlDoc.querySelectorAll('sheetData row');
+    const zip = await JSZip().loadAsync(file);
 
-    rows.forEach(row => {
-      let rowData = [];
+    const sheetXml = await zip.file('xl/worksheets/sheet1.xml').async('text');
+    const sharedStringsXml = zip.file('xl/sharedStrings.xml')
+      ? await zip.file('xl/sharedStrings.xml').async('text')
+      : null;
 
-      row.querySelectorAll('c').forEach(cell => {
-        const value = cell.querySelector('v')?.textContent || '';
-        rowData.push(value);
-      });
+    displayTable(sheetXml, sharedStringsXml);
+  });
 
-      console.log(rowData); // Виводимо дані рядка
+function displayTable(sheetXml, sharedStringsXml) {
+  const parser = new DOMParser();
+  const sheetDoc = parser.parseFromString(sheetXml, 'application/xml');
+  const sharedStrings = sharedStringsXml
+    ? parseSharedStrings(sharedStringsXml)
+    : [];
+
+  const rows = sheetDoc.querySelectorAll('sheetData row');
+  const table = document.getElementById('dataTable');
+  table.innerHTML = '';
+
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    row.querySelectorAll('c').forEach(cell => {
+      const value = cell.querySelector('v')?.textContent || '';
+      const type = cell.getAttribute('t');
+      //console.log(value + '\t' + sharedStrings[value]);
+      const td = document.createElement(row.rowIndex === 0 ? 'th' : 'td');
+      td.textContent = type === 's' ? sharedStrings[value] : value;
+      tr.appendChild(td);
     });
-  })
-  .catch(error => console.error('Помилка завантаження XML:', error));
+    table.appendChild(tr);
+  });
+}
+
+function parseSharedStrings(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  return [...doc.querySelectorAll('si t')].map(el => el.textContent);
+}
